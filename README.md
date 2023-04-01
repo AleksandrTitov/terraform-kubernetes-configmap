@@ -1,1 +1,1 @@
-# Module name
+# Kubernetes configmap module
