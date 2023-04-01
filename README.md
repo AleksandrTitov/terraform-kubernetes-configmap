@@ -36,5 +36,6 @@ No modules.
 
 | Name | Description |
 |------|-------------|
+| <a name="output_name"></a> [name](#output\_name) | The name of this config map |
 | <a name="output_uid"></a> [uid](#output\_uid) | The unique in time and space value for this config map |
 <!-- END_TF_DOCS -->
