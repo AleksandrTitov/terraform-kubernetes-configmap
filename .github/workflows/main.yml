@@ -1,0 +1,105 @@
+name: 'Terraform'
+
+env:
+  tf_version: 1.4.4
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '**/*.tf'
+      - '**/*.tpl'
+  pull_request:
+    paths:
+      - '**/*.tf'
+      - '**/*.tpl'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.pull_request.head.ref || github.ref }}
+
+jobs:
+  semver:
+    name: 'Set version tag'
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write
+    if: github.event_name == 'push'
+    steps:
+      -
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: '0'
+      -
+        name: Bump version and push tag
+        id: bump_version
+        uses: anothrNick/github-tag-action@1.61.0
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WITH_V: false
+          DEFAULT_BUMP: minor
+          DRY_RUN: false
+    outputs:
+      version: ${{ steps.bump_version.outputs.new_tag }}
+
+  linters:
+    name: 'Linters'
+    runs-on: ubuntu-20.04
+    defaults:
+      run:
+        shell: bash
+    if: github.event_name == 'pull_request'
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      -
+        name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.tf_version }}
+          terraform_wrapper: false
+      -
+        name: Terraform Format
+        id: fmt
+        continue-on-error: false
+        run: |          
+          echo "::notice::Executing 'terraform fmt' for the module"
+          if [ $(terraform fmt -check --list=true -diff=true -write=false | tee fmt-issues | wc -c) -ne 0 ]; then
+            echo "::error::Terraform module has to be formatted!"
+            echo "::error::Apply 'terraform fmt' to the module to fix the formatting issues:"
+            cat fmt-issues
+            exit 1
+          else
+            echo "::notice::Terraform module does not have any formatting issues"
+          fi
+      -
+        name: Terraform Validate
+        id: validate
+        continue-on-error: false
+        run: |
+          echo "::notice::Executing 'terraform init && terraform validate' to the module"
+          terraform init -input=false && terraform validate
+
+  docs:
+    name: 'Docs'
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Render terraform docs and push changes back to PR
+        uses: terraform-docs/gh-actions@main
+        with:
+          working-dir: .
+          output-file: README.md
+          output-method: inject
+          git-push: "true"
